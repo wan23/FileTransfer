@@ -1,3 +1,9 @@
+# VirtualEnv
+venv
+webenv
+
+
+
 *.py[co]
 
 # Packages
