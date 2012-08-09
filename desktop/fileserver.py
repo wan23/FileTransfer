@@ -19,7 +19,7 @@ NEW_USER_PATH = "/user/new"
 LOGIN_PATH = "/user/login"
 CONFIG_FILE = "./config.json"
 
-paths = []
+paths = {}
 install_id = None
 
 config = {}
@@ -53,8 +53,8 @@ def get_listing():
     return '\r\n'.join(paths)
 
 def setup_test():
-    paths.append('/Users/juan/Desktop/IMG_0343.JPG')
-    paths.append('/Users/juan/Desktop/LivingSocial Voucher.pdf')
+    paths['file1'] = '/Users/juan/Desktop/IMG_0343.JPG'
+    paths['file2'] = '/Users/juan/Desktop/LivingSocial Voucher.pdf'
 
 
 def get_url(path):
@@ -65,8 +65,24 @@ def get_url(path):
     return ret
 
 def ping_server():
-    urlopen("%s/%s" % (get_url(PING_PATH), config['install_id']))
+    server_message = urlopen("%s/%s" % (get_url(PING_PATH), config['install_id']))
+    data = json.loads(server_message.read())
+    command = data.get("command")
+    if command == "get_file":
+        send_file(data['file_id'], data['transfer_id'])
+        
+def send_file(file_id, transfer_id):
+    path = get_file_path(file_id)
+    if path:
+        start_new_thread(_send_file, path)
 
+# TODO: Have this thread somehow communicate its status
+def _send_file(path, transfer_id):
+    print "Executing transfer (%s) with %s" % (transfer_id, path)
+
+def get_file_path(file_id):
+    return paths.get(file_id)
+    
 def hashed_password():
     # TODO: should hash with something random
     d = md5()
@@ -89,7 +105,7 @@ def new_user(username, password):
         print ("Create user failed, got back: %s" % resp_dict)
         return False
     return True
-                       
+
 def login():
     if config.get('user_token'):
         return
