@@ -72,6 +72,9 @@ def ping_server():
     command = data.get("command")
     if command == "get_file":
         send_file(data['file_id'], data['transfer_id'])
+    elif command == 'test':
+        print "Test command received!!!!!"
+    
         
 def send_file(file_id, transfer_id):
     path = get_file_path(file_id)
@@ -162,6 +165,6 @@ def setup_config():
 if __name__ == '__main__':
     setup_config()
     start_new_thread(ping_thread, (None,))
-    start_new_thread(file_scan_thread, (None,))
+    #start_new_thread(file_scan_thread, (None,))
     # TODO: File scanning thread
     app.run(host='0.0.0.0', port=int(config.get('local_port')))
