@@ -7,6 +7,8 @@ from urllib import urlencode
 from urllib2 import urlopen
 from hashlib import md5
 
+from config import Config
+
 app = Flask(__name__)
 
 BUFFER_SIZE = 5000000
@@ -22,7 +24,7 @@ CONFIG_FILE = "./config.json"
 paths = {}
 install_id = None
 
-config = {}
+config = None
 
 @app.route('/status')
 def get_status():
@@ -91,15 +93,15 @@ def hashed_password():
 
 def new_user(username, password):
     #TODO: Ask user for credentials
-    config['username'] = username
-    config['password'] = password
+    config.set('username', username)
+    config.set('password', password)
     resp = urlopen(get_url(NEW_USER_PATH),
             urlencode({'username': config['username'],
                        'password': hashed_password()}))
     resp_dict = loads(resp.read())
     token = resp_dict.get('user_token')
     if token:
-        config['user_token'] = token
+        config.set('user_token', token)
     else:
         # TODO: Real exceptions
         print ("Create user failed, got back: %s" % resp_dict)
@@ -115,7 +117,7 @@ def login():
     resp_dict = loads(resp.read())
     token = resp_dict.get('user_token')
     if token:
-        config['user_token'] = token
+        config.set('user_token') = token
         print "user token: " + token
     else:
         # this should throw a specific exception
@@ -133,23 +135,13 @@ def register_with_server():
 def get_install_id():
     if not config.get('install_id'):
         register_with_server()
-    return config['install_id']
+    return config.get('install_id')
 
 def ping_thread(args):
     while True:
         ping_server()
         sleep(PING_TIME)
 
-def load_config(filename):
-    with open(filename, 'r') as f:
-        for line in f.readlines():
-            k, v = line.split("=")
-            config[k.strip()] = v.strip()
-
-def write_config(filename, config):
-    with open(filename, 'w') as f:
-        for (k, v) in config.iteritems():
-            f.write(str(k) + "=" + str(v) + "\r\n")
 
 def verify_config():
     return config.get('install_id')
@@ -158,20 +150,18 @@ def verify_config():
 def first_time_registration():
     # TODO: This needs to get the user's info somehow
     new_user('wan', 'pass')
-    config['username'] = 'wan'
-    config['install_id'] = get_install_id()
-    write_config(CONFIG_FILE, config)
+    config.set('username'), 'wan')
+    config.set('install_id', get_install_id())
+    config.save()
 
 
 def setup_config():
-    config = load_config(CONFIG_FILE)
-    if not verify_config():
-        first_time_registration()
-    print config
-
+    config = Config(CONFIG_FILE)
+    
 
 if __name__ == '__main__':
     setup_config()
     start_new_thread(ping_thread, (None,))
+    start_new_thread(file_scan_thread, (None,))
     # TODO: File scanning thread
-    app.run(host='0.0.0.0', port=int(config['local_port']))
+    app.run(host='0.0.0.0', port=int(config.get('local_port')))
