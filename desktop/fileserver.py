@@ -150,7 +150,7 @@ def verify_config():
 def first_time_registration():
     # TODO: This needs to get the user's info somehow
     new_user('wan', 'pass')
-    config.set('username'), 'wan')
+    config.set('username', 'wan')
     config.set('install_id', get_install_id())
     config.save()
 
