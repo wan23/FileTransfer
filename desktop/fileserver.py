@@ -1,18 +1,20 @@
 from flask import Flask, Response
 
-from json import loads
+from json import loads, dumps
 from thread import start_new_thread
 from time import sleep
 from urllib import urlencode
 from urllib2 import urlopen
 from hashlib import md5
 
+from file_listing import FileList
 from config import Config
 
 app = Flask(__name__)
 
 BUFFER_SIZE = 5000000
 PING_TIME = 10  # 10 seconds (for testing)
+FILE_SCAN_TIME = 300  # 5 minutes for now
 #SERVER_HOST = "severe-fog-6187.herokuapp.com"
 #SERVER_PORT = 80
 PING_PATH = "/ping"
@@ -20,6 +22,7 @@ REGISTER_PATH = "/app/register"
 NEW_USER_PATH = "/user/new"
 LOGIN_PATH = "/user/login"
 GET_UPLOAD_URL_PATH = "/transfer/%s/start_upload"
+UPLOAD_FILE_LIST_PATH = "/install/%s/files"
 CONFIG_FILE = "./config.ini"
 
 paths = {}
@@ -87,21 +90,22 @@ class FileServer:
 
   def send_file(self, file_hash, transfer_id):
     resp = urlopen(self.get_url(GET_UPLOAD_URL_PATH % transfer_id),
-             urlencode({'user_token': self.config.get('user_token')})
-    resp = loads(resp.read())
+             urlencode({'user_token': self.config.get('user_token')}))
+    res = loads(resp.read())
     
-    url = resp['url']
+    url = res['url']
     
     file = self.file_list.get_file_info(file_hash)
     if not file:
       print "File not found for hash: " + file_hash
       # TODO: Let the server know the file wasn't found
-    start_thread(self._send_file, (file['path'], url))
+    start_new_thread(self._send_file, (file['path'], url))
+
 
   # TODO: Have this thread somehow communicate its status
   def _send_file(path, url):
-    print "Executing transfer (%s) with %s" % (transfer_id, file['path'])
-    pass
+    print "Executing transfer (%s) with %s" % (path, url)
+
 
   def hashed_password(self):
     # TODO: should hash with something random
@@ -154,7 +158,17 @@ class FileServer:
     for k, v in new_conf:
      self.config.set(k, v)
 
-
+  def upload_listing(self, listing):
+    
+    resp = urlopen(self.get_url(UPLOAD_FILE_LIST_PATH % self.config.get('install_id')),
+                   urlencode({'user_token': self.config.get('user_token'),
+                              'file_list': dumps({'files': listing})}))
+    resp = loads(resp.read())
+    if resp.get('status') != 'OK':
+        print "Failed to upload listing."
+    # TODO: Error handling here?
+    
+    
   def get_install_id(self):
     if not self.config.get('install_id'):
       self.register_with_server()
@@ -166,6 +180,12 @@ class FileServer:
       self.ping_server()
       sleep(PING_TIME)
 
+  def file_scan_thread(self, update_time):
+    while True:
+      self.file_list.update_listing()
+      listing = self.file_list.get_listing()
+      self.upload_listing(listing)
+      sleep(FILE_SCAN_TIME)
 
   def verify_config(self):
     return self.config.get('install_id')

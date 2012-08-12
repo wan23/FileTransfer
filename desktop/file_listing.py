@@ -1,7 +1,8 @@
 import os
 from json import dumps, loads
-from hashlib import md5
+import hashlib
 
+# TODO: This needs to be thread safe!
 class FileList:
     directories = []
     filters = []
@@ -37,18 +38,19 @@ class FileList:
         return list(self.files.values())
 
     def update_listing(self):
-        self.files = {}
+        new_files = {}
         for dir in self.directories:
             for (dirpath, dirnames, filenames) in os.walk(dir):
                 for name in filenames:
                     file = self._file_record(dirpath, name, False)
-                    self.files[file['hash']] = file
+                    new_files[file['hash']] = file
                 for name in dirnames:
                     file = self._file_record(dirpath, name, True)
-                    self.files[file['hash']] = file
+                    new_files[file['hash']] = file
+        self.files = new_files
                     
     def get_file_info(self, file_hash):
-    	return files.get(file_hash)
+    	return self.files.get(file_hash)
     	             
     def save_to_cache(self):
 		with open(self.cache_file, 'w') as f:
