@@ -7,6 +7,9 @@ from urllib import urlencode
 from urllib2 import urlopen
 from hashlib import md5
 
+from jinja2 import Environment, PackageLoader
+env = Environment(loader=PackageLoader('fileserver', '.'))
+
 from file_listing import FileList
 from config import Config
 
@@ -22,10 +25,13 @@ REGISTER_PATH = "/app/register"
 NEW_USER_PATH = "/user/new"
 LOGIN_PATH = "/user/login"
 GET_UPLOAD_URL_PATH = "/transfer/%s/start_upload"
-UPLOAD_FILE_LIST_PATH = "/install/%s/files"
+FILE_LIST_PATH = "/install/%s/files"
 CONFIG_FILE = "./config.ini"
+FILE_CACHE_NAME = './files.cache'
 
-paths = {}
+fs = None
+
+test_files_template = env.get_template('test_files_template.html')
 install_id = None
 
 
@@ -56,17 +62,18 @@ def get_file(path):
 
     return Response(file_piece(), mimetype='application/octet-stream')
 
+@app.route("/test/files")
+def test_files_page():
+    print fs
+    resp = urlopen(fs.get_url(FILE_LIST_PATH % fs.config.get('install_id')))
+    res = loads(resp.read())
 
-@app.route('/list')
-def get_listing():
-    return '\r\n'.join(paths)
+    return test_files_template.render(files=res['files'],
+                                      user_token=fs.config.get('user_token'),
+                                      transfer_start=fs.get_url('/transfer/new/' +
+                                        fs.config.get('install_id') + '/'))
 
 class FileServer:
-
-  def setup_test(self):
-    paths['file1'] = '/Users/juan/Desktop/IMG_0343.JPG'
-    paths['file2'] = '/Users/juan/Desktop/LivingSocial Voucher.pdf'
-
 
   def get_url(self, path):
     print self.config.config
@@ -79,11 +86,14 @@ class FileServer:
 
   def ping_server(self):
     server_message = urlopen("%s/%s" % (self.get_url(PING_PATH), 
-                                        self.config.get('install_id')))
+                                        self.config.get('install_id')),
+                                        urlencode({'user_token': 
+                                                   self.config.get('user_token')}))
     data = loads(server_message.read())
     command = data.get("command")
     if command == "get_file":
-      self.send_file(data['file_id'], data['transfer_id'])
+      for transfer in data['transfers']:
+        self.send_file(transfer['file_hash'], transfer['transfer_id'])
     elif command == 'test':
       print "Test command received!!!!!"
 
@@ -99,11 +109,12 @@ class FileServer:
     if not file:
       print "File not found for hash: " + file_hash
       # TODO: Let the server know the file wasn't found
-    start_new_thread(self._send_file, (file['path'], url))
+    print file
+    start_new_thread(self._send_file, (file['full_path'], url))
 
 
   # TODO: Have this thread somehow communicate its status
-  def _send_file(path, url):
+  def _send_file(pself, path, url):
     print "Executing transfer (%s) with %s" % (path, url)
 
 
@@ -159,8 +170,8 @@ class FileServer:
      self.config.set(k, v)
 
   def upload_listing(self, listing):
-    
-    resp = urlopen(self.get_url(UPLOAD_FILE_LIST_PATH % self.config.get('install_id')),
+    #print "Upload listing: " + str(listing)
+    resp = urlopen(self.get_url(FILE_LIST_PATH % self.config.get('install_id')),
                    urlencode({'user_token': self.config.get('user_token'),
                               'file_list': dumps({'files': listing})}))
     resp = loads(resp.read())
@@ -177,14 +188,25 @@ class FileServer:
 
   def ping_thread(self, args):
     while True:
-      self.ping_server()
+      try:
+        self.ping_server()
+      except Exception as e:
+        # TODO: log something
+        print "Exception in ping thread"
+        print e
       sleep(PING_TIME)
 
-  def file_scan_thread(self, update_time):
+  def file_scan_thread(self, unused_args):
     while True:
-      self.file_list.update_listing()
-      listing = self.file_list.get_listing()
-      self.upload_listing(listing)
+      try:
+        print "some stuff"
+        self.file_list.update_listing()
+        listing = self.file_list.get_listing()
+        self.upload_listing(listing)
+      except Exception as e:
+        # TODO: log something!
+        print "Exception in file thread"
+        print e
       sleep(FILE_SCAN_TIME)
 
   def verify_config(self):
@@ -201,15 +223,15 @@ class FileServer:
 
   def setup_config(self):
     self.config = Config(CONFIG_FILE)
-    self.file_list = FileList()
+    self.file_list = FileList(FILE_CACHE_NAME)
     self.file_list.set_directories(self.config.get('shared_dirs'))
     
 
 if __name__ == '__main__':
   fs = FileServer()
   fs.setup_config()
-  fs.ping_thread((None,))
-  #start_new_thread(ping_thread, (None,))
-  #start_new_thread(file_scan_thread, (None,))
+  #fs.ping_thread((None,))
+  start_new_thread(fs.ping_thread, (None,))
+  start_new_thread(fs.file_scan_thread, (None,))
   # TODO: File scanning thread
   app.run(host='0.0.0.0', port=int(fs.config.get('local_port')))

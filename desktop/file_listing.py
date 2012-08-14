@@ -38,16 +38,22 @@ class FileList:
         return list(self.files.values())
 
     def update_listing(self):
+        print "starting update listing"
         new_files = {}
+        print self.directories
         for dir in self.directories:
+            if dir == '/':
+              	raise Exception('Refusing to index entire filesystem')
             for (dirpath, dirnames, filenames) in os.walk(dir):
                 for name in filenames:
+                #    print name
                     file = self._file_record(dirpath, name, False)
                     new_files[file['hash']] = file
                 for name in dirnames:
                     file = self._file_record(dirpath, name, True)
                     new_files[file['hash']] = file
         self.files = new_files
+        print "update listing done"
                     
     def get_file_info(self, file_hash):
     	return self.files.get(file_hash)
