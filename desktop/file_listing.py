@@ -1,6 +1,7 @@
 import os
 from json import dumps, loads
 import hashlib
+from mimetypes import guess_type
 
 # TODO: This needs to be thread safe!
 class FileList:
@@ -27,10 +28,13 @@ class FileList:
         path = os.path.join(dirpath, name)
         # TODO: Actually use a hash of the file contents
         hash = hashlib.md5(path).hexdigest()
+        size = os.path.getsize(path)
         return {'full_path': path,
                 'name': name,
                 'is_dir': is_dir,
-                'hash': hash}
+                'hash': hash,
+                'size': size,
+                'mime_type': guess_type(path)[0] or 'application/octet-stream'}
 
     def get_listing(self):
         if not self.files:

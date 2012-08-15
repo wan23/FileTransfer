@@ -6,6 +6,12 @@ from time import sleep
 from urllib import urlencode
 from urllib2 import urlopen
 from hashlib import md5
+import pycurl
+
+#from poster.encode import multipart_encode
+#from poster.streaminghttp import register_openers
+#register_openers()
+#import urllib2
 
 from jinja2 import Environment, PackageLoader
 env = Environment(loader=PackageLoader('fileserver', '.'))
@@ -110,12 +116,36 @@ class FileServer:
       print "File not found for hash: " + file_hash
       # TODO: Let the server know the file wasn't found
     print file
-    start_new_thread(self._send_file, (file['full_path'], url))
+    start_new_thread(self._send_file, (file, url))
 
 
   # TODO: Have this thread somehow communicate its status
-  def _send_file(pself, path, url):
-    print "Executing transfer (%s) with %s" % (path, url)
+  def _send_file(self, file, url):
+    print "Executing transfer (%s) with %s" % (file['name'], url)
+#    datagen, headers = multipart_encode({file['hash']: open(file['full_path'], "rb")})
+
+    # Create the Request object
+#    request = urllib2.Request(url, datagen, headers)
+#    request.get_method = lambda: 'PUT'
+    # Actually do the request, and get the response
+#    try:
+#        ret = urlopen(request).read()
+#        print ret
+#    except HTTPError as e:
+#        print e.read()
+    with open(file['full_path']) as fp:
+      c = pycurl.Curl()
+      c.setopt(c.UPLOAD, 1)
+      c.setopt(c.READFUNCTION, fp.read)
+      c.setopt(c.CUSTOMREQUEST, 'PUT')
+      c.setopt(c.URL, str(url))
+      c.setopt(c.INFILESIZE_LARGE, file['size'])
+      if file['mime_type']:
+         c.setopt(pycurl.HTTPHEADER, ['Content-Type: %s' % (file['mime_type'])])
+     # c.setopt(c.HTTPPOST, [("file1", (c.FORM_FILE, file['full_path']))])
+    #c.setopt(c.VERBOSE, 1)
+      c.perform()
+      c.close()
 
 
   def hashed_password(self):
@@ -199,7 +229,6 @@ class FileServer:
   def file_scan_thread(self, unused_args):
     while True:
       try:
-        print "some stuff"
         self.file_list.update_listing()
         listing = self.file_list.get_listing()
         self.upload_listing(listing)
