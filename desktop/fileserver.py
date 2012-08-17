@@ -8,10 +8,6 @@ from urllib2 import urlopen
 from hashlib import md5
 import pycurl
 
-#from poster.encode import multipart_encode
-#from poster.streaminghttp import register_openers
-#register_openers()
-#import urllib2
 
 from jinja2 import Environment, PackageLoader
 env = Environment(loader=PackageLoader('fileserver', '.'))
@@ -26,11 +22,12 @@ PING_TIME = 10  # 10 seconds (for testing)
 FILE_SCAN_TIME = 300  # 5 minutes for now
 #SERVER_HOST = "severe-fog-6187.herokuapp.com"
 #SERVER_PORT = 80
-PING_PATH = "/ping"
+PING_PATH = "/ping/%s"
 REGISTER_PATH = "/app/register"
 NEW_USER_PATH = "/user/new"
 LOGIN_PATH = "/user/login"
 GET_UPLOAD_URL_PATH = "/transfer/%s/start_upload"
+UPLOAD_COMPLETE_PATH = "/transfer/%s/done"
 FILE_LIST_PATH = "/install/%s/files"
 CONFIG_FILE = "./config.ini"
 FILE_CACHE_NAME = './files.cache'
@@ -88,14 +85,22 @@ class FileServer:
                               path)
     print ret
     return ret
+    
+  def request(self, path, data=None):
+    response = urlopen(self.get_url(path), data)
+    return loads(response.read())
 
+  def get(self, path, extra_path_components=[]):
+    path = path % extra_path_components
+    return self.request(path)
 
+  def post(self, path, extra_path_components=[], data={}):
+    path = path % extra_path_components
+    return self.request(path, urlencode(data))
+    
   def ping_server(self):
-    server_message = urlopen("%s/%s" % (self.get_url(PING_PATH), 
-                                        self.config.get('install_id')),
-                                        urlencode({'user_token': 
-                                                   self.config.get('user_token')}))
-    data = loads(server_message.read())
+    data = self.post(PING_PATH, self.config.get('install_id'),
+                     data={'user_token': self.config.get('user_token')})
     command = data.get("command")
     if command == "get_file":
       for transfer in data['transfers']:
@@ -116,23 +121,13 @@ class FileServer:
       print "File not found for hash: " + file_hash
       # TODO: Let the server know the file wasn't found
     print file
-    start_new_thread(self._send_file, (file, url))
+    start_new_thread(self._send_file, (file, url, transfer_id))
 
 
   # TODO: Have this thread somehow communicate its status
-  def _send_file(self, file, url):
+  def _send_file(self, file, url, transfer_id):
     print "Executing transfer (%s) with %s" % (file['name'], url)
-#    datagen, headers = multipart_encode({file['hash']: open(file['full_path'], "rb")})
 
-    # Create the Request object
-#    request = urllib2.Request(url, datagen, headers)
-#    request.get_method = lambda: 'PUT'
-    # Actually do the request, and get the response
-#    try:
-#        ret = urlopen(request).read()
-#        print ret
-#    except HTTPError as e:
-#        print e.read()
     with open(file['full_path']) as fp:
       c = pycurl.Curl()
       c.setopt(c.UPLOAD, 1)
@@ -142,11 +137,13 @@ class FileServer:
       c.setopt(c.INFILESIZE_LARGE, file['size'])
       if file['mime_type']:
          c.setopt(pycurl.HTTPHEADER, ['Content-Type: %s' % (file['mime_type'])])
-     # c.setopt(c.HTTPPOST, [("file1", (c.FORM_FILE, file['full_path']))])
-    #c.setopt(c.VERBOSE, 1)
       c.perform()
       c.close()
-
+    self._done_uploading(transfer_id)
+      
+  def _done_uploading(self, transfer_id):
+    # TODO: Update the client-side list of pending transfers
+    self.post(UPLOAD_COMPLETE_PATH, transfer_id)
 
   def hashed_password(self):
     # TODO: should hash with something random
@@ -215,7 +212,6 @@ class FileServer:
       self.register_with_server()
     return self.config.get('install_id')
 
-
   def ping_thread(self, args):
     while True:
       try:
@@ -259,8 +255,6 @@ class FileServer:
 if __name__ == '__main__':
   fs = FileServer()
   fs.setup_config()
-  #fs.ping_thread((None,))
   start_new_thread(fs.ping_thread, (None,))
   start_new_thread(fs.file_scan_thread, (None,))
-  # TODO: File scanning thread
   app.run(host='0.0.0.0', port=int(fs.config.get('local_port')))
