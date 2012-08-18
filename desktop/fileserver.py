@@ -70,11 +70,12 @@ def test_files_page():
     print fs
     resp = urlopen(fs.get_url(FILE_LIST_PATH % fs.config.get('install_id')))
     res = loads(resp.read())
+    install_id = fs.config.get('install_id')
 
     return test_files_template.render(files=res['files'],
                                       user_token=fs.config.get('user_token'),
-                                      transfer_start=fs.get_url('/transfer/new/' +
-                                        fs.config.get('install_id') + '/'))
+                                      new_transfer_url=fs.get_url('/transfer/new'),
+                                      install_id=install_id)
 
 class FileServer:
 
@@ -136,7 +137,9 @@ class FileServer:
       c.setopt(c.URL, str(url))
       c.setopt(c.INFILESIZE_LARGE, file['size'])
       if file['mime_type']:
-         c.setopt(pycurl.HTTPHEADER, ['Content-Type: %s' % (file['mime_type'])])
+         c.setopt(pycurl.HTTPHEADER, ['Content-Type: %s' % (file['mime_type']),
+                                     'Content-Disposition: attachment; filename=%s' %
+                                      file['name']])
       c.perform()
       c.close()
     self._done_uploading(transfer_id)
