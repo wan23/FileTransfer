@@ -3,7 +3,7 @@ from json import dumps, loads
 import hashlib
 from mimetypes import guess_type
 
-# TODO: This needs to be thread safe!
+# TODO: This needs to be made thread safe!
 class FileList:
     directories = []
     filters = []
